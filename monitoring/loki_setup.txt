@@ -1,63 +1,67 @@
-# Loki and Promtail Setup - DevOps Intern Final Project
-# Author: Debasis Nayak
-# Date: 31 Oct 2025
+1. Overview
 
-## Step 1: Run Loki container
-# Loki collects and stores logs. It runs locally via Docker.
+This setup demonstrates how to configure Grafana Loki and Promtail 
+to collect and view logs from Docker containers on a local environment.
 
+Loki is a log aggregation system, and Promtail is its log shipping agent 
+that sends logs from containers or system files to Loki.
+
+2. start Loki (Docker)
+
+# Pull and run Loki container
 docker run -d --name=loki \
   -p 3100:3100 \
-  -v "$(pwd)/monitoring/loki-config.yaml:/etc/loki/local-config.yaml" \
   grafana/loki:2.9.0
 
-# Verify Loki is running:
+# Verify Loki is running
 docker ps
 
-# Loki UI (optional):
-# http://localhost:3100/metrics
+# Access Loki API to check status
+curl http://localhost:3100/ready
 
----
 
-## Step 2: Run Promtail (Log Forwarder)
-# Promtail reads log files and sends them to Loki.
+3. Configure Promtail
+# Create Promtail config file (promtail-config.yaml)
+# Example contents:
 
-# Create local folder for test logs
-mkdir -p logs
-echo "Hello from Promtail test log!" > logs/test.log
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
 
-# Run Promtail container on the same Docker network as Loki
-docker network create loki-net
-docker network connect loki-net loki
+positions:
+  filename: /tmp/positions.yaml
 
+clients:
+  - url: http://host.docker.internal:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: varlogs
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: varlogs
+          __path__: /var/log/*log
+
+
+4. Start Promtail (Docker)
+
+# Run Promtail container and mount config file
 docker run -d --name=promtail \
-  --network=loki-net \
-  -v "$(pwd)/logs:/logs" \
-  -v "$(pwd)/monitoring/promtail-config.yaml:/etc/promtail/config.yaml" \
+  -v /var/log:/var/log \
+  -v "$(pwd)/promtail-config.yaml:/etc/promtail/config.yaml" \
   grafana/promtail:2.9.0
 
-# Verify Promtail logs:
+# Check logs to verify Promtail is running
 docker logs promtail
 
----
 
-## Step 3: View Logs in Grafana
-# 1. Open Grafana (if installed locally or via Docker)
-# 2. Add Loki as a data source (URL: http://loki:3100)
-# 3. Go to "Explore" and run:
-#    {job="windows-logs"}
+5. Viewing Logs
 
-# You should see logs like:
-# "Hello from Promtail test log!"
+# Use Loki’s API to query logs directly
+curl -G -s "http://localhost:3100/loki/api/v1/query" \
+  --data-urlencode 'query={job="varlogs"}'
 
----
 
-## Step 4: How to View Logs from Command Line
-# Loki API can be queried using curl:
-curl "http://localhost:3100/loki/api/v1/query?query={job=\"windows-logs\"}"
 
----
 
-## Summary
-- Loki collects and indexes logs.
-- Promtail forwards logs from /logs/*.log to Loki.
-- Both run inside Docker containers connected to the same network.
