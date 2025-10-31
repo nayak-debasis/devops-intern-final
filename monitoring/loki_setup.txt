@@ -1,0 +1,63 @@
+# Loki and Promtail Setup - DevOps Intern Final Project
+# Author: Debasis Nayak
+# Date: 31 Oct 2025
+
+## Step 1: Run Loki container
+# Loki collects and stores logs. It runs locally via Docker.
+
+docker run -d --name=loki \
+  -p 3100:3100 \
+  -v "$(pwd)/monitoring/loki-config.yaml:/etc/loki/local-config.yaml" \
+  grafana/loki:2.9.0
+
+# Verify Loki is running:
+docker ps
+
+# Loki UI (optional):
+# http://localhost:3100/metrics
+
+---
+
+## Step 2: Run Promtail (Log Forwarder)
+# Promtail reads log files and sends them to Loki.
+
+# Create local folder for test logs
+mkdir -p logs
+echo "Hello from Promtail test log!" > logs/test.log
+
+# Run Promtail container on the same Docker network as Loki
+docker network create loki-net
+docker network connect loki-net loki
+
+docker run -d --name=promtail \
+  --network=loki-net \
+  -v "$(pwd)/logs:/logs" \
+  -v "$(pwd)/monitoring/promtail-config.yaml:/etc/promtail/config.yaml" \
+  grafana/promtail:2.9.0
+
+# Verify Promtail logs:
+docker logs promtail
+
+---
+
+## Step 3: View Logs in Grafana
+# 1. Open Grafana (if installed locally or via Docker)
+# 2. Add Loki as a data source (URL: http://loki:3100)
+# 3. Go to "Explore" and run:
+#    {job="windows-logs"}
+
+# You should see logs like:
+# "Hello from Promtail test log!"
+
+---
+
+## Step 4: How to View Logs from Command Line
+# Loki API can be queried using curl:
+curl "http://localhost:3100/loki/api/v1/query?query={job=\"windows-logs\"}"
+
+---
+
+## Summary
+- Loki collects and indexes logs.
+- Promtail forwards logs from /logs/*.log to Loki.
+- Both run inside Docker containers connected to the same network.
